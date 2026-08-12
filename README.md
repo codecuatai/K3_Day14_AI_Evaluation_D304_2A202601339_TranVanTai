@@ -30,6 +30,20 @@ cp .env.example .env                     # rồi điền OPENAI_API_KEY (chỉ c
 
 Chi tiết đầy đủ theo hệ điều hành, xử lý lỗi thường gặp: xem [`guide_lab.md`](guide_lab.md) Mục 2 và Mục 15.
 
+## Demo UI tiếng Việt
+
+Demo local đã nối trực tiếp vào RAG, benchmark, failure analysis, regression và reranking. Không
+cần cài thêm Streamlit hoặc frontend package:
+
+```powershell
+python serve_demo.py
+```
+
+Mở `http://127.0.0.1:8000/`. Demo mặc định chạy `mock-offline-generator` để ổn định và không
+tốn API. Trong UI có thể chọn provider trong `.env` nếu muốn thử model thật; nếu API lỗi, giao
+diện sẽ hiển thị rõ trạng thái fallback. Xem chi tiết kiến trúc và kịch bản trình bày trong
+[`plan_demo_ui_vietnamese.md`](plan_demo_ui_vietnamese.md).
+
 ---
 
 ## Mục tiêu
