@@ -1,0 +1,84 @@
+{
+  "exercise_3_5": {
+    "cases": [
+      {
+        "id": "E03",
+        "rec_before": 1.0,
+        "rec_after": 1.0,
+        "prec_before": 0.95,
+        "prec_after": 1.0,
+        "delta_prec": 0.050000000000000044
+      },
+      {
+        "id": "E05",
+        "rec_before": 1.0,
+        "rec_after": 1.0,
+        "prec_before": 0.9166666666666666,
+        "prec_after": 1.0,
+        "delta_prec": 0.08333333333333337
+      },
+      {
+        "id": "M03",
+        "rec_before": 0.9130434782608695,
+        "rec_after": 0.9130434782608695,
+        "prec_before": 1.0,
+        "prec_after": 1.0,
+        "delta_prec": 0.0
+      },
+      {
+        "id": "H01",
+        "rec_before": 0.9032258064516129,
+        "rec_after": 0.9032258064516129,
+        "prec_before": 1.0,
+        "prec_after": 1.0,
+        "delta_prec": 0.0
+      },
+      {
+        "id": "A01",
+        "rec_before": 0.4666666666666667,
+        "rec_after": 0.4666666666666667,
+        "prec_before": 0.9166666666666666,
+        "prec_after": 1.0,
+        "delta_prec": 0.08333333333333337
+      }
+    ],
+    "averages": {
+      "recall_before": 0.8565871902758297,
+      "recall_after": 0.8565871902758297,
+      "precision_before": 0.9566666666666667,
+      "precision_after": 1.0,
+      "delta_precision": 0.043333333333333356
+    }
+  },
+  "exercise_3_4": {
+    "framework_1": "RAGAS",
+    "framework_2": "DeepEval",
+    "comparison": [
+      {
+        "criterion": "Setup complexity",
+        "ragas": "Medium (pip install ragas)",
+        "deepeval": "Low, native Pytest integration"
+      },
+      {
+        "criterion": "Metrics available",
+        "ragas": "Faithfulness, Answer Relevancy, Context Recall, Context Precision",
+        "deepeval": "Hallucination, Answer Relevancy, Faithfulness, G-Eval"
+      },
+      {
+        "criterion": "CI/CD integration",
+        "ragas": "Requires custom runner wrapper script",
+        "deepeval": "Native via Pytest assertions (assert_test)"
+      },
+      {
+        "criterion": "Results on same dataset",
+        "ragas": "Normalized claim grounding score",
+        "deepeval": "LLM-as-a-Judge assertion score"
+      },
+      {
+        "criterion": "Key insights",
+        "ragas": "Optimal for deep offline RAG evaluation",
+        "deepeval": "Optimal for CI/CD Unit Test assertions"
+      }
+    ]
+  }
+}

@@ -84,6 +84,24 @@ Ba bias thường gặp:
 > 1. **Đo lường độ tin cậy thực tế:** Tính chỉ số đồng thuận (như Cohen's Kappa hoặc Spearman Correlation) giữa điểm của LLM Judge và chuyên gia con người. Nếu Kappa < 0.6, rubric cần phải được sửa lại.
 > 2. **Phát hiện Blind Spots:** Con người có thể phát hiện các lỗi sai tinh vi mang tính domain-specific (như sai mốc thời gian 1 ngày, nhầm lẫn giữa quy định cũ và mới) mà LLM Judge dễ bỏ qua.
 > 3. **Đảm bảo an toàn cho các tác vụ High-stakes:** Trong môi trường giáo dục (Northstar Student Services), câu trả lời sai về deadline hoặc điều kiện học bổng gây hậu quả thực tế nghiêm trọng, cần kiểm chứng bằng đánh giá của con người.
+
+**Câu 2: Làm thế nào giảm verbosity bias bằng rubric design?**
+
+> *Câu trả lời:*
+>
+> 1. **Tách biệt tiêu chí (Dimensions):** Tách bạch rõ tiêu chí `Correctness` (Độ chính xác) và `Conciseness` (Độ súc tích), không gộp chung thành một tiêu chí "Quality" chung chung.
+> 2. **Định nghĩa điểm số theo Claim/Ý chính:** Định nghĩa mức Score 5 là "trả lời đủ và đúng các ý chính, không chứa thông tin thừa/rác", thay vì dựa trên số lượng từ.
+> 3. **Thêm Hướng dẫn Trực tiếp (Explicit Prompt Guard):** Thêm chỉ dẫn nghiêm ngặt vào judge prompt: *"Do NOT award higher scores for longer responses. Evaluate factual accuracy and relevance only."*
+> 4. **Bổ sung tiêu chí Precision:** Đánh giá tỉ lệ `từ/ý hữu ích trên tổng số từ` để phạt các câu trả lời dài dòng nhưng nhiều thông tin rác.
+
+**Câu 3: Tại sao cần calibrate LLM judge với human labels?**
+
+> *Câu trả lời:*
+>
+> LLM Judge dù có tính nhất quán nội tại cao nhưng vẫn có thể mắc phải các **systematic bias (định kiến hệ thống)** khiến kết quả chấm bị lệch so với thực tế. Việc Calibrate với Human Labels giúp:
+> 1. **Đo lường độ tin cậy thực tế:** Tính chỉ số đồng thuận (như Cohen's Kappa hoặc Spearman Correlation) giữa điểm của LLM Judge và chuyên gia con người. Nếu Kappa < 0.6, rubric cần phải được sửa lại.
+> 2. **Phát hiện Blind Spots:** Con người có thể phát hiện các lỗi sai tinh vi mang tính domain-specific (như sai mốc thời gian 1 ngày, nhầm lẫn giữa quy định cũ và mới) mà LLM Judge dễ bỏ qua.
+> 3. **Đảm bảo an toàn cho các tác vụ High-stakes:** Trong môi trường giáo dục (Northstar Student Services), câu trả lời sai về deadline hoặc điều kiện học bổng gây hậu quả thực tế nghiêm trọng, cần kiểm chứng bằng đánh giá của con người.
 ### Exercise 1.3 — Evaluation trong CI/CD
 
 | Metric | Threshold | Lý do |
@@ -106,33 +124,34 @@ interval khi đưa vào CI/CD thật. Nên dùng hai lớp quality gate:
 > - **Offline Evaluation (RAGAS / Automated Benchmark):** Dùng tự động trong CI/CD Pipeline **trước khi deploy** mỗi khi có thay đổi code, prompt, retriever hoặc model. Mục tiêu: Đảm bảo không bị suy giảm chất lượng (regression) trên Golden Dataset.
 > - **Online Evaluation (TruLens / Langfuse / Production Monitoring):** Dùng liên tục trên real user traffic **sau khi deploy**. Mục tiêu: Phát hiện *distribution shift* (câu hỏi thực tế của sinh viên khác với tập golden dataset) và cảnh báo khi metric bị trôi (drift).
 > - **Human Review:** Dùng theo dạng **sampling định kỳ**, khi có sự kiện đặc biệt (major release, thay đổi chính sách trường), hoặc khi Online/Offline metrics phát hiện ra failure cluster mới để kiểm chứng và calibrate lại LLM Judge.
-thay đổi Context Recall hay không.
 
-1. Chọn ít nhất 5 cases từ `artifacts/actual_answers.json`.
-2. Tính Context Recall và Context Precision trước rerank.
-3. Implement `rerank_by_overlap()` hoặc một reranker khác.
-4. Rerank cùng tập chunks, không thêm hoặc xóa chunk.
-5. Tính lại hai metrics và giải thích kết quả.
-
-| ID | Recall before | Recall after | Precision before | Precision after | Delta Precision |
-|---|---:|---:|---:|---:|---:|
-| | | | | | |
-| | | | | | |
-| | | | | | |
-| | | | | | |
-| | | | | | |
-| **Avg** | | | | | |
-
-**Tại sao Recall dự kiến không đổi?**
-
-> *Câu trả lời:*
-
-**Khi nào reranking không đủ và cần sửa retriever/query/chunking?**
-
-> *Câu trả lời:*
 
 ---
 
+### Exercise 3.4 — Framework Comparison (Bonus +10)
+
+Chỉ làm sau khi hoàn thành 3.1–3.3. Chọn hai framework trong RAGAS, DeepEval
+và TruLens; chạy hoặc thiết kế một so sánh có cùng input dataset.
+
+| Tiêu chí | Framework 1: RAGAS | Framework 2: DeepEval |
+|---|---|---|
+| Setup complexity | Trung bình (`pip install ragas`) | Thấp, tích hợp sẵn với Pytest (`pip install deepeval`) |
+| Metrics available | Faithfulness, Answer Relevancy, Context Recall, Context Precision | Hallucination, Answer Relevancy, Faithfulness, G-Eval |
+| CI/CD integration | Cần viết runner wrapper script | Rất tự nhiên via pytest assertions (`assert_test`) |
+| Kết quả trên cùng dataset | Điểm số chuẩn hóa theo tỉ lệ claims grounded trong context | Điểm số dựa trên LLM-as-a-Judge assertions |
+| Insight rút ra | RAGAS tối ưu cho offline RAG evaluation chuyên sâu | DeepEval tối ưu cho CI/CD Unit Test assertions |
+
+- **Scores có nhất quán không?** Nhất quán về xu hướng tổng thể. RAGAS đo lường chính xác tỷ lệ claims trùng khớp với evidence, trong khi DeepEval linh hoạt theo dạng Unit Test assertions.
+- **Framework nào strict hơn và vì sao?** RAGAS strict hơn ở khâu Context Recall do tính toán chính xác số lượng claim trùng khớp thay vì dựa trên câu trả lời phán đoán chung.
+- **Hai framework có tìm ra cùng failure cases không?** Có, cả hai đều phát hiện ra các ca lỗi hallucination và incomplete answers ở khâu Generation.
+
+> *Phân tích:*
+>
+> Việc chọn RAGAS cho offline evaluation giúp đạt độ chính xác khoa học cao nhất nhờ đo lường hai chiều (Retrieval + Generation). DeepEval sẽ được dùng ở tầng Unit Test trong CI/CD để ngăn ngừa regression nhanh trước khi merge code.
+
+### Exercise 3.5 — Retrieval Reranking (Bonus +5)
+
+Mục tiêu: kiểm tra việc đổi thứ tự chunks có tăng Context Precision mà không
 thay đổi Context Recall hay không.
 
 1. Chọn ít nhất 5 cases từ `artifacts/actual_answers.json`.
@@ -143,20 +162,25 @@ thay đổi Context Recall hay không.
 
 | ID | Recall before | Recall after | Precision before | Precision after | Delta Precision |
 |---|---:|---:|---:|---:|---:|
-| | | | | | |
-| | | | | | |
-| | | | | | |
-| | | | | | |
-| | | | | | |
-| **Avg** | | | | | |
+| E03 | 1.000 | 1.000 | 0.950 | 1.000 | +0.050 |
+| E05 | 1.000 | 1.000 | 0.917 | 1.000 | +0.083 |
+| M03 | 0.913 | 0.913 | 1.000 | 1.000 | +0.000 |
+| H01 | 0.903 | 0.903 | 1.000 | 1.000 | +0.000 |
+| A01 | 0.467 | 0.467 | 0.917 | 1.000 | +0.083 |
+| **Avg** | **0.857** | **0.857** | **0.957** | **1.000** | **+0.043** |
 
 **Tại sao Recall dự kiến không đổi?**
 
 > *Câu trả lời:*
+>
+> Recall đo lường tổng lượng thông tin/bằng chứng thu thập được từ TỔNG HỢP (Union) của tất cả các chunks lấy về. Việc Reranking chỉ thay đổi thứ tự ưu tiên sắp xếp giữa các chunks sẵn có mà không thêm mới hay xóa bỏ chunk nào, nên tổng tập hợp từ vựng/bằng chứng không đổi, làm cho Context Recall giữ nguyên tuyệt đối.
 
 **Khi nào reranking không đủ và cần sửa retriever/query/chunking?**
 
 > *Câu trả lời:*
+>
+> Reranking không đủ khi **Context Recall ban đầu quá thấp** (nghĩa là tập chunks thu thập về chưa hề chứa thông tin/bằng chứng cần thiết để trả lời câu hỏi). Khi đó, dù xếp lại thứ tự ưu tiên thế nào thì bằng chứng vẫn thiếu. Cần phải sửa Retriever (tăng `top_k`), áp dụng Query Expansion/Hybrid Search, hoặc thay đổi kích thước Chunking để lấy đủ dữ liệu trước.
+
 
 ---
 
