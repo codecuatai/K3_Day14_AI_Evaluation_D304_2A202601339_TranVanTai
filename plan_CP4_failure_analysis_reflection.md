@@ -146,3 +146,275 @@ Trả lời cụ thể:
 3. Chunk đúng có đứng đủ sớm không?
 4. Actual answer có bỏ sót claim, thêm claim, lạc intent hay từ chối sai không?
 5. Có mismatch nào giữa score heuristic và đọc thủ công không?
+
+### 2.3 Symptom
+
+Symptom chỉ mô tả điều quan sát được, ví dụ:
+
+- “Answer từ chối dù retrieved chunk chứa deadline chính xác.”
+- “Answer nêu policy claim không xuất hiện trong gold/retrieved context.”
+- “Answer trả lời đúng chủ đề nhưng bỏ mất exception và effective date.”
+
+Không viết symptom là “model kém” hoặc “AI trả lời sai”; đó chưa phải observation có thể kiểm chứng.
+
+---
+
+## Bước 3 — 5 Whys có tính nhân quả
+
+Với mỗi case, điền bảng:
+
+| Level | Câu hỏi | Câu trả lời dựa trên evidence |
+|---|---|---|
+| Symptom | Đã quan sát thấy gì? | Một câu có actual answer + trace |
+| Why 1 | Vì sao answer tạo symptom này? | Liên hệ answer với context/prompt |
+| Why 2 | Vì sao component đó xử lý sai? | Routing/retrieval/generation/config |
+| Why 3 | Vì sao guardrail/test chưa bắt được? | Missing test, prompt rule hoặc gate |
+| Why 4 | Vì sao thiết kế hiện tại cho phép lỗi lặp lại? | Root mechanism có thể tái diễn |
+| Why 5 | Root cause nào có thể hành động? | Component + change cụ thể + metric verify |
+
+### Quy tắc 5 Whys
+
+- Mỗi Why phải trả lời Why trước, không nhảy sang một nguyên nhân mới.
+- Không dừng ở “LLM hallucinate”, “prompt không tốt” hoặc “API lỗi”. Hãy nêu điều kiện gây ra nó.
+- Nếu trace cho thấy retrieval tốt, không kết luận “improve retrieval” chỉ vì heuristic chọn metric
+  thấp nhất là Faithfulness.
+- Nếu artifact có `error` hoặc fallback, tách rõ **configuration/infrastructure root cause** khỏi
+  model-generation root cause.
+- Root cause tốt có dạng: “Khi [điều kiện], [component] làm [hành vi sai] vì thiếu [control],
+  cần sửa [action].”
+
+### Ví dụ root cause đạt yêu cầu
+
+```text
+Khi một câu hỏi in-domain chứa từ khóa giống safety instruction, routing/prompt fallback
+chọn refusal template dù retrieved context đã chứa answer; cần bổ sung intent boundary test
+và đo lại Relevance + Completeness trên các in-domain cases.
+```
+
+---
+
+## Bước 4 — So sánh với `find_root_cause()`
+
+Trong mỗi case, ghi đúng output của core:
+
+- `Context is missing or irrelevant — improve retrieval`
+- `Answer does not address the question — improve prompt clarity`
+- `Answer is missing key information — increase context window or improve generation`
+- `Multiple issues detected — review full pipeline`
+
+Sau đó chọn một trong hai kết luận:
+
+```text
+Agree: output khớp với trace vì ...
+hoặc
+Disagree/qualify: heuristic chọn ... vì score thấp nhất là ..., nhưng trace cho thấy ...;
+root cause thực tế nên là ...
+```
+
+Đây là điểm thể hiện tư duy đánh giá: heuristic là tín hiệu chẩn đoán, không phải ground truth
+tuyệt đối.
+
+---
+
+## Bước 5 — Fix và metric verification
+
+Mỗi case phải có fix cụ thể, không viết “cải thiện AI”. Dùng bảng:
+
+| Root cause | Fix cụ thể | Metric cần verify | Điều kiện thành công |
+|---|---|---|---|
+| Missing evidence | tăng coverage/chunking/query expansion | Context Recall + Completeness | Recall tăng, Completeness không giảm |
+| Noise/ranking | rerank hoặc chỉnh retrieval | Context Precision + Faithfulness | Precision tăng, Faithfulness ổn định/tăng |
+| Unsupported claim | grounding instruction/checker | Faithfulness | Không còn unsupported claim; không tăng refusal sai |
+| Wrong intent/refusal | sửa routing boundary/few-shot | Relevance + Completeness | In-domain answer không bị refusal |
+| Missing condition | prompt “answer every part”/structured output | Completeness | giữ đủ date, amount, exception |
+| Privacy/safety failure | safety rule + adversarial regression case | safety review + Faithfulness | không leak/không follow injection |
+
+Mỗi fix cần nói rõ metric nào sẽ tăng hoặc failure nào sẽ giảm. Không hứa một con số không có
+baseline; nếu chưa có baseline, dùng “target direction” và ghi cách đo.
+
+---
+
+## Bước 6 — Cluster toàn bộ failures
+
+Không chỉ cluster theo `failure_type`, vì nhiều failure có cùng mechanism nhưng bị heuristic gắn
+nhãn khác nhau. Dùng các cluster có thể hành động:
+
+| Cluster | Dấu hiệu | IDs | Fix dùng chung | Priority |
+|---|---|---|---|---|
+| Retrieval coverage | recall thấp, evidence thiếu | | retriever/chunking/query | |
+| Retrieval ranking | precision thấp, noise sớm | | rerank/top-k | |
+| Grounding/generation | retrieval tốt, faithfulness thấp | | grounding guard/checker | |
+| Completeness | evidence có nhưng answer bỏ sót | | structured prompt/max tokens | |
+| Intent/routing | grounded hoặc refusal sai intent | | routing boundary/few-shot | |
+| Safety/privacy | injection, leak, unsafe claim | | safety gate + human review | |
+| Configuration/fallback | error/fallback lặp lại | | fix provider/config + smoke test | |
+
+### Cách ưu tiên
+
+Ưu tiên một cluster khi:
+
+1. Nó ảnh hưởng nhiều IDs.
+2. Nó ảnh hưởng case high-stakes/adversarial.
+3. Fix có thể verify bằng metric và test tự động.
+
+Trong reflection, ghi rõ: “Nếu chỉ được sửa một cluster, chọn ___ vì ___; metric kiểm chứng là ___.”
+
+---
+
+## Bước 7 — Improvement Log
+
+Paste hoặc tái tạo output của `generate_improvement_log()` từ artifact thật, sau đó review thủ công.
+Không để nguyên suggestion generic nếu nó không khớp evidence.
+
+Improvement log tối thiểu phải có:
+
+```text
+| Failure ID | Type | Root Cause | Suggested Fix | Status |
+|------------|------|------------|---------------|--------|
+| F001 | ... | ... | ... | Open |
+```
+
+Sau bảng per-failure, thêm cluster action log để tránh patch từng answer:
+
+| Priority | Cluster | Shared fix | IDs covered | Verification metric | Status |
+|---:|---|---|---|---|---|
+| 1 | | | | | Open |
+| 2 | | | | | Open |
+| 3 | | | | | Open |
+
+Một suggestion tốt phải gồm **action + target component + verification metric**, ví dụ:
+
+```text
+Add an in-domain/out-of-scope routing boundary test and re-run Relevance and Completeness
+on all cases that currently return refusal.
+```
+
+---
+
+## Bước 8 — Regression Strategy cho benchmark tiếp theo
+
+Phần này phải dựa trên `BenchmarkRunner.run_regression()` chứ không chỉ nói “chạy lại test”.
+
+### 8.1 Khi nào chạy
+
+Chạy offline benchmark và regression trước merge/deploy khi có:
+
+- thay đổi code RAG hoặc evaluator;
+- thay đổi prompt/routing/grounding guardrail;
+- thay đổi chunking, retriever, reranker hoặc `top_k`;
+- thay đổi model/provider/temperature;
+- cập nhật corpus hoặc policy version.
+
+### 8.2 Regression gate
+
+`run_regression()` so sánh average Faithfulness, Relevance và Completeness của run mới với baseline.
+Metric giảm quá `0.05` là regression và phải fail gate.
+
+Để phù hợp Student Services, thêm safety gate ngoài average:
+
+```text
+Block nếu:
+- bất kỳ adversarial case nào vi phạm safety/privacy;
+- có unsupported policy claim nghiêm trọng;
+- có case high-stakes bị hallucination dù average vẫn đạt;
+- Faithfulness tụt dưới threshold an toàn đã thống nhất.
+```
+
+Context Recall/Precision vẫn phải theo dõi trong report; nếu chúng giảm, tạo cảnh báo retrieval dù
+`run_regression()` core chủ yếu so sánh ba answer-side metrics.
+
+### 8.3 Baseline và reproducibility
+
+Mỗi run cần giữ:
+
+- baseline results;
+- new benchmark results;
+- corpus_id/version;
+- model/provider/prompt version/top_k;
+- generated_at;
+- danh sách regression và 3 lowest cases.
+
+Không ghi API key vào artifact.
+
+### 8.4 Flow đề xuất
+
+```text
+Change
+  → validate golden dataset
+  → generate actual answers
+  → evaluate benchmark
+  → run_regression(new, baseline)
+  → case-level safety review
+  → block / alert / deploy
+```
+
+---
+
+## Bước 9 — WOW Layer cho CP4
+
+Chỉ làm sau khi đủ tiêu chí bắt buộc:
+
+- Gắn mỗi root cause với một component cụ thể: retriever, reranker, router, generator, guardrail
+  hoặc configuration.
+- Ghi “metric to recheck” cho mọi proposed fix.
+- Nêu một fix giải quyết nhiều case và một fix chỉ dành cho case đặc biệt.
+- Phân biệt rõ **quality regression** với **artifact/API/configuration failure**.
+- Thêm một adversarial safety rule vào regression strategy.
+- Viết một câu “what changed my mind”: kết luận ban đầu nào bị trace thực tế bác bỏ.
+
+CP4 không cần thêm code để đạt điểm; chất lượng nằm ở reasoning có evidence và actionability.
+
+---
+
+## Checklist CP4
+
+- [x] Đã xác nhận dùng artifact mới nhất, không dùng số liệu stale trong `reflection.md`.
+- [x] Summary có metrics aggregate và failure distribution khớp artifact.
+- [x] Đúng 3 case Overall thấp nhất đã được chọn.
+- [x] Mỗi case có question, expected, actual, scores và evidence inspection.
+- [x] Mỗi case có symptom quan sát được.
+- [x] Mỗi case có đủ 5 Whys.
+- [x] Root cause của mỗi case có component và action cụ thể.
+- [x] Đã so sánh với output thật của `find_root_cause()`.
+- [x] Mỗi fix có metric/verification method.
+- [x] Đã cluster toàn bộ failures và ưu tiên shared fix.
+- [x] Có per-failure improvement log và cluster action log.
+- [x] Regression strategy dùng `run_regression()` với drop threshold `0.05`.
+- [x] Có case-level safety gate cho adversarial/high-stakes failure.
+- [ ] Chỉ sửa `reflection.md`, không sửa code/corpus/tests để làm đẹp kết quả. (WOW audit bổ sung script/report riêng, không thay đổi core code/corpus/tests.)
+
+### Checklist WOW — không phải blocker
+
+- [x] Có evidence coverage/traceability cho 3 case thấp nhất.
+- [x] Có phân biệt metric signal với root cause thật.
+- [x] Có một shared fix tác động nhiều case.
+- [x] Có provenance và baseline strategy rõ ràng.
+- [x] Có câu “what changed my mind”.
+
+---
+
+## Mẫu bàn giao CP4 cho agent tiếp theo
+
+```text
+CP4 status: PASS / BLOCKED / IN PROGRESS
+
+Source of truth:
+- benchmark artifact: current / stale / missing
+- actual-answer artifact: current / stale / missing
+
+Top 3 IDs: ___, ___, ___
+
+Case analyses:
+- 5 Whys x 3: complete / incomplete
+- Root causes actionable: yes / no
+- find_root_cause comparison: complete / incomplete
+
+Clustering:
+- Main cluster: ___
+- Shared fix: ___
+- Verification metric: ___
+
+Regression strategy: complete / incomplete
+Reflection file: complete / incomplete
+Remaining issue: none hoặc ghi rõ
+```

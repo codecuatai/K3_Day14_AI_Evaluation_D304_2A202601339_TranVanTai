@@ -70,7 +70,7 @@ Dùng ít nhất hai metrics để bảo vệ kết luận.
 | Why 2 | Tại sao nguyên nhân trên xảy ra? | Logic phân loại câu hỏi gán nhầm E01 vào nhóm từ chối. |
 | Why 3 | Tại sao vấn đề đó chưa được ngăn chặn? | Prompt template chưa có phân luồng rõ ràng giữa câu hỏi tra cứu và câu hỏi tấn công. |
 | Why 4 | Tại sao cơ chế hiện tại chưa phát hiện hoặc xử lý được? | Hệ thống thiếu bước kiểm tra Faithfulness guardrail trước khi xuất output. |
-| Why 5 | Root cause có thể hành động được là gì? | Cấu hình API key thật trong `.env` và tinh chỉnh Prompt Generation để trích xuất dữ liệu trực tiếp từ context. |
+| Why 5 | Root cause có thể hành động được là gì? | Artifact ghi `mock-offline-generator`; mock fallback quét cả system prompt nên các từ như `override` kích hoạt refusal dù question in-domain. Cần tách question khỏi safety instructions hoặc dùng provider live, rồi kiểm tra lại Faithfulness/Relevance/Completeness. |
 
 **Root cause từ `find_root_cause()`:** Context is missing or irrelevant — improve retrieval
 
@@ -80,7 +80,7 @@ Dùng ít nhất hai metrics để bảo vệ kết luận.
 
 **Proposed fix cụ thể:**
 
-> Bổ sung chỉ dẫn grounding tường minh vào prompt: "If context contains the answer, extract it directly and state clearly without refusal."
+> Bổ sung chỉ dẫn grounding tường minh vào prompt: "If context contains the answer, extract it directly and state clearly without refusal." Verify bằng cách re-run E01 và toàn bộ in-domain cluster, theo dõi Faithfulness, Relevance và Completeness.
 
 ### Failure 2
 
@@ -101,11 +101,14 @@ Dùng ít nhất hai metrics để bảo vệ kết luận.
 | Why 2 | Tại sao nguyên nhân trên xảy ra? | Router nhận diện nhầm từ khóa trong prompt. |
 | Why 3 | Tại sao vấn đề đó chưa được ngăn chặn? | Thiếu kiểm tra phân loại ý định (Intent Classifier) trước khi từ chối. |
 | Why 4 | Tại sao cơ chế hiện tại chưa phát hiện hoặc xử lý được? | Prompt chưa phân biệt rõ câu hỏi thông thường và câu hỏi ngoài domain. |
-| Why 5 | Root cause có thể hành động được là gì? | Tinh chỉnh prompt intent routing và bật LLM Generator thật với API Key. |
+| Why 5 | Root cause có thể hành động được là gì? | Mock fallback nhận diện scope bằng substring trong toàn prompt; retrieved chunk của E02 có cụm `admission review` nên bị bắt nhầm thành out-of-scope. Cần kiểm tra trên question/structured intent và thêm in-domain vs out-of-scope boundary tests. |
 
 **Root cause và proposed fix:**
 
-> Root cause: Router phân loại nhầm câu hỏi chính đáng thành out-of-scope. Fix: Cập nhật prompt system instruction rõ ràng hơn cho bộ phân loại phạm vi.
+> Root cause: Router phân loại nhầm câu hỏi chính đáng thành out-of-scope. Fix: Cập nhật prompt system instruction rõ ràng hơn cho bộ phân loại phạm vi; verify bằng Relevance và Completeness của E02 cùng các in-domain boundary cases.
+>
+> **Output từ `find_root_cause()`:** `Context is missing or irrelevant — improve retrieval`.
+> **Đánh giá:** Không đồng ý hoàn toàn. Đây là tie giữa ba score bằng `0.000`, nên heuristic ưu tiên faithfulness và trả về retrieval; nhưng retrieved chunk đã chứa rõ `12–18 credits` và cụm `admission review` chỉ là noise trigger của mock fallback. Root cause hành động được là false-positive scope detection trong mock/provider fallback.
 
 ### Failure 3
 
@@ -126,11 +129,14 @@ Dùng ít nhất hai metrics để bảo vệ kết luận.
 | Why 2 | Tại sao nguyên nhân trên xảy ra? | Biến môi trường `.env` chưa có API Key hợp lệ. |
 | Why 3 | Tại sao vấn đề đó chưa được ngăn chặn? | Chưa cài đặt LLM live generation cho benchmark run. |
 | Why 4 | Tại sao cơ chế hiện tại chưa phát hiện hoặc xử lý được? | Hệ thống tự động chuyển sang offline mock generator khi API key là placeholder. |
-| Why 5 | Root cause có thể hành động được là gì? | Điền API key thật vào `.env` để Generator gọi trực tiếp mô hình Gemini/OpenAI. |
+| Why 5 | Root cause có thể hành động được là gì? | Artifact ghi `mock-offline-generator`, nên refusal đến từ fallback/configuration chứ chưa chứng minh lỗi model live. Cần cấu hình provider hợp lệ hoặc sửa mock fallback không bắt nhầm safety words, rồi kiểm tra Faithfulness và Completeness. |
 
 **Root cause và proposed fix:**
 
-> Root cause: Thiếu API key hợp lệ trong `.env`. Fix: Cấu hình `GEMINI_API_KEY` hoặc `OPENAI_API_KEY` hợp lệ để mô hình sinh câu trả lời đầy đủ.
+> Root cause: run này dùng `mock-offline-generator`; safety substring trong prompt có thể kích hoạt refusal sai. Fix: dùng provider hợp lệ hoặc sửa fallback để phân tích question riêng, sau đó re-run benchmark và verify Faithfulness + Completeness của E03.
+>
+> **Output từ `find_root_cause()`:** `Context is missing or irrelevant — improve retrieval`.
+> **Đánh giá:** Không đồng ý hoàn toàn. Gold evidence và retrieved chunk đều chứa chính xác `USD 420 per registered credit`; score bằng `0.000` ở cả ba answer metrics làm heuristic rơi vào tie-break retrieval. Trace thực tế chỉ ra configuration/fallback false positive, không phải thiếu context.
 
 ---
 
@@ -138,15 +144,15 @@ Dùng ít nhất hai metrics để bảo vệ kết luận.
 
 | Cluster | Root Cause | Failure IDs | Priority |
 |---|---|---|---|
-| 1 | Fallback Generator Refusal / Missing API Key | E01, E03, E05, M01, M02, M03, M04, M05, M06, M07, H03, H04, A03 | High |
-| 2 | Intent Routing misclassifying as Out-of-Scope | E02, H01, H02, H05, A01 | High |
-| 3 | Attack handling for Prompt Injection | A02 | Medium |
+| 1 | Grounding/generation refusal under mock fallback | E01, E02, E03, E04, E05, M01, M02, M03, M04, M05, M06, M07, H01, H02, H03, H05 | High |
+| 2 | Adversarial safety review | A01, A02, A03 | High |
+| 3 | Intent/routing mismatch | H04 | Medium |
 
 **Nếu chỉ được sửa một cluster, bạn chọn cluster nào và vì sao?**
 
 > *Câu trả lời:*
 >
-> Chọn **Cluster 1 (Fallback Generator Refusal / Missing API Key)** vì cluster này chiếm hơn 65% tổng số ca thất bại (13/20 cases). Việc khắc phục Cluster 1 bằng cách cung cấp API key và hoàn thiện prompt generator sẽ lập tức tăng điểm Faithfulness và Completeness trên diện rộng.
+> Chọn **Cluster 1 (Grounding/generation refusal under mock fallback)** vì cluster này chiếm 16/20 failures và retrieval đang mạnh. Cần sửa false-positive safety matching trong mock/provider fallback hoặc chạy provider đã cấu hình hợp lệ, sau đó kiểm tra lại Faithfulness, Relevance và Completeness trên toàn cluster.
 
 ---
 
@@ -263,3 +269,58 @@ Evaluate → Analyze → Improve → Augment benchmark → Repeat
 > 1. **LLM-as-a-Judge Evaluation (RAGAS / DeepEval):** Sử dụng LLM prompt để chấm điểm dựa trên ý nghĩa Factual Claims.
 > 2. **Semantic Similarity (Embedding Distance):** Sử dụng cosine similarity giữa vector của answer và expected answer.
 > 3. **Groundedness Check (TruLens RAG Triad):** Đo lường trực tiếp tỷ lệ mệnh đề được hỗ trợ bởi retrieved context bằng LLM reasoning.
+
+---
+
+## 8. WOW Audit — Evidence-backed Quality Gate
+
+Audit tự động được sinh từ `artifacts/cp4_audit.json` và `artifacts/cp4_audit.md`, không dùng
+số liệu mẫu trong reflection.
+
+### Decision snapshot
+
+| Signal | Result |
+|---|---:|
+| Corpus | `northstar-student-services-v1` |
+| Benchmark records | 20 |
+| Pass rate | 0.0% |
+| Safety flags | 3 adversarial cases |
+| Regression gate | NOT_EVALUATED — chưa có baseline artifact |
+
+### Top 3 traceability
+
+| ID | Overall | Cluster | Likely stage | Diagnostic |
+|---|---:|---|---|---|
+| E01 | 0.000 | grounding_generation | generator | Retrieval mạnh nhưng answer không grounded |
+| E02 | 0.000 | grounding_generation | generator | Retrieval mạnh nhưng answer không grounded |
+| E03 | 0.000 | grounding_generation | generator | Retrieval mạnh nhưng answer không grounded |
+
+Ba case đều có evidence liên quan trong retrieved trace, nhưng actual answer là refusal thay vì
+trích xuất nội dung chính sách. Vì vậy đây là tín hiệu generation/routing, không phải lý do để sửa
+corpus hoặc nhồi thêm gold context.
+
+### Failure clusters và shared fixes
+
+| Cluster | Count | Ý nghĩa | Shared fix | Metric verify |
+|---|---:|---|---|---|
+| grounding_generation | 16 | Nhiều case in-domain bị refusal/không grounded | Bỏ fallback refusal cho câu hỏi in-domain; thêm grounding và answer-from-context test | Faithfulness, Relevance, Completeness |
+| safety_review | 3 | A01–A03 cần review safety riêng | Giữ refusal/clarification đúng attack type; review thủ công trước deploy | Safety review, Faithfulness |
+| intent_or_routing | 1 | Một case không khớp intent | Bổ sung intent boundary/few-shot cho câu hỏi ambiguity | Relevance, Completeness |
+
+### Safety override
+
+A01 (`out_of_scope`), A02 (`prompt_injection`) và A03 (`false_premise_or_ambiguous_trap`) đều được
+đánh dấu review bắt buộc. Aggregate score cải thiện cũng không được tự động bypass các case safety.
+
+### Regression gate cho vòng kế tiếp
+
+Chạy `run_regression(new_results, baseline_results)` sau mỗi thay đổi code, prompt, retriever,
+model hoặc corpus. Block nếu một trong ba average answer metrics giảm quá `0.05`; đồng thời block
+riêng nếu có adversarial safety failure hoặc unsupported policy claim nghiêm trọng. Retrieval metrics
+vẫn được theo dõi như diagnostic alert.
+
+### What changed my mind
+
+Kết luận ban đầu có thể nghi ngờ retriever vì pass rate bằng 0%, nhưng trace cho thấy Context Recall
+và Context Precision rất cao trong khi actual answers chủ yếu là refusal. Bằng chứng này chuyển ưu
+tiên từ sửa retrieval sang kiểm tra mock/provider fallback, intent boundary và grounding generation.

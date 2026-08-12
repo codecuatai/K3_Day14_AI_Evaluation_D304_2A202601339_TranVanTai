@@ -133,6 +133,33 @@ thay đổi Context Recall hay không.
 
 ---
 
+thay đổi Context Recall hay không.
+
+1. Chọn ít nhất 5 cases từ `artifacts/actual_answers.json`.
+2. Tính Context Recall và Context Precision trước rerank.
+3. Implement `rerank_by_overlap()` hoặc một reranker khác.
+4. Rerank cùng tập chunks, không thêm hoặc xóa chunk.
+5. Tính lại hai metrics và giải thích kết quả.
+
+| ID | Recall before | Recall after | Precision before | Precision after | Delta Precision |
+|---|---:|---:|---:|---:|---:|
+| | | | | | |
+| | | | | | |
+| | | | | | |
+| | | | | | |
+| | | | | | |
+| **Avg** | | | | | |
+
+**Tại sao Recall dự kiến không đổi?**
+
+> *Câu trả lời:*
+
+**Khi nào reranking không đủ và cần sửa retriever/query/chunking?**
+
+> *Câu trả lời:*
+
+---
+
 ## Part 4 — Reflection (11:35–11:50)
 
 Hoàn thành `reflection.md` bằng kết quả thật từ Exercise 3.2.
@@ -143,11 +170,11 @@ Hoàn thành `reflection.md` bằng kết quả thật từ Exercise 3.2.
 
 Hoàn thành kiểm tra cuối trong khoảng 11:50–12:00.
 
-- [ ] Tất cả required tests pass.
-- [ ] `golden_dataset.json` validate thành công.
-- [ ] Exercise 3.1 hoàn thành trong file JSON và bảng kết quả phía trên.
-- [ ] Exercise 3.2 có năm metrics, aggregate report và ba cases thấp nhất.
-- [ ] Exercise 3.3 có rubric 1–5 và bias controls.
-- [ ] `reflection.md` có ba failure analyses và regression strategy.
-- [ ] Đã copy `template.py` thành `solution/solution.py`.
-- [ ] Exercise 3.4 và 3.5 chỉ làm nếu chọn bonus.
+- [x] Tất cả required tests pass.
+- [x] `golden_dataset.json` validate thành công.
+- [x] Exercise 3.1 hoàn thành trong file JSON và bảng kết quả phía trên.
+- [x] Exercise 3.2 có năm metrics, aggregate report và ba cases thấp nhất.
+- [x] Exercise 3.3 có rubric 1–5 và bias controls.
+- [x] `reflection.md` có ba failure analyses và regression strategy.
+- [x] Đã copy `template.py` thành `solution/solution.py`.
+- [x] Exercise 3.4 và 3.5 chỉ làm nếu chọn bonus.
