@@ -25,16 +25,27 @@ Theo bài giảng:
 - 0.6–0.8: Needs work — analyze failures, iterate.
 - Dưới 0.6: Significant issues — investigate.
 
-Với từng metric, xác định khi nào score thấp có thể chấp nhận và khi nào là
-critical.
+Với từng metric, xác định khi nào score thấp có thể chấp nhận và khi nào là critical.
 
 | Metric | Acceptable Low Score Scenario | Critical Low Score Scenario | Action Required |
 |---|---|---|---|
-| Faithfulness | | | |
-| Answer Relevance | | | |
-| Context Recall | | | |
-| Context Precision | | | |
-| Completeness | | | |
+| Faithfulness | Câu hỏi yêu cầu tóm tắt/diễn giải chính sách — answer dùng từ ngữ paraphrase khác context khiến word-overlap giảm dù ý nghĩa hoàn toàn đúng. | < 0.3: Model tự ý bịa thông tin không có trong retrieved context (hallucination), ví dụ: bịa deadline nộp học phí hoặc bịa điều kiện gia hạn học bổng — gây rủi ro lớn cho sinh viên. | Kiểm tra grounding guardrail trong prompt, bổ sung yêu cầu "chỉ dùng thông tin từ context", xem xét giảm temperature. |
+| Answer Relevance | Câu hỏi rất ngắn (2–3 từ kỹ thuật như "tuition deadline?") nhưng answer trả lời dài, đúng và đầy đủ — tỉ lệ word-overlap thấp do câu hỏi ít token. | < 0.3: Answer đi hoàn toàn lạc chủ đề (ví dụ: sinh viên hỏi đăng ký môn học nhưng AI trả lời về quy trình khiếu nại điểm số). | Xem lại intent detection và routing logic; kiểm tra domain scope filter trong system prompt. |
+| Context Recall | Gold expected answer có thêm chi tiết nền hoặc chi tiết tùy chọn không cần cho task, trong khi retriever vẫn lấy đủ evidence cốt lõi để trả lời đúng. Recall thấp theo heuristic khi đó cần được kiểm tra thủ công trước khi coi là regression. | < 0.5: Retriever bỏ sót evidence quan trọng của câu hỏi cross-document (ví dụ: câu hỏi về incomplete grade cần dữ liệu từ 05_attendance và 08_appeals nhưng chỉ lấy 1 doc). Generator nhận thiếu context nên answer tất yếu bị incomplete. | Tăng top_k, cải thiện chiến lược chunking, thử áp dụng query expansion hoặc hybrid search. |
+| Context Precision | Gold context/label chưa bao quát một chunk paraphrase hoặc một nguồn evidence hợp lệ khác. Heuristic word-overlap có thể đánh chunk đó là không relevant dù answer vẫn grounded; cần human review. | < 0.3: Noise chunks (tài liệu không liên quan) đứng ở đầu ranking, làm pha loãng context window làm generator dễ bị xao lãng và sinh hallucination. | Áp dụng Reranking (xắp xếp lại theo word-overlap hoặc cross-encoder), fine-tune tham số BM25. |
+| Completeness | Expected answer được viết rất dài/verbose nhưng sinh viên thực tế chỉ cần ý chính core — overlap thấp dù câu trả lời đạt mục đích. | < 0.4: Answer bỏ sót điều kiện/thông tin then chốt (ví dụ: hướng dẫn nộp phúc khảo nhưng bỏ qua deadline 10 ngày làm việc) dẫn tới sinh viên làm sai quy trình. | Phân tích root cause: Nếu Context Recall thấp → fix Retriever; nếu Context Recall cao → fix Generator prompt/tăng max_tokens. |
+
+`Context Recall` và `Context Precision` là retrieval-side diagnostics trên `QAPair.retrieved_contexts`.
+Hai metric này không được đưa vào `overall_score()` và không thay đổi pass rule gốc của core lab.
+
+**Diagnostic:**
+
+- `Context Recall` thấp + `Completeness` thấp thường là tín hiệu mạnh của lỗi retriever: generator
+  không thể dùng evidence chưa được lấy ra.
+- `Context Recall` và `Context Precision` đều cao nhưng `Faithfulness` thấp thường trỏ về lỗi
+  generator/hallucination: evidence đã có nhưng answer thêm thông tin ngoài context.
+- `Context Precision` thấp + `Faithfulness` thấp: ưu tiên kiểm tra retriever/reranker trước, không
+  quy kết ngay cho generator.
 
 ### Exercise 1.2 — Bias trong LLM-as-a-Judge
 
@@ -47,14 +58,32 @@ Ba bias thường gặp:
 **Câu 1: Thiết kế experiment phát hiện position bias với ít nhất hai conditions.**
 
 > *Câu trả lời:*
+>
+> **Thiết kế Thí nghiệm:** Sử dụng tập 10+ câu hỏi test set, mỗi câu hỏi có 2 câu trả lời A (chất lượng tốt hơn) và B (chất lượng kém hơn).
+> - **Condition 1 (AB Order):** Đưa cho LLM Judge đánh giá theo thứ tự: Answer A đứng trước, Answer B đứng sau. Ghi lại điểm số `Score_A_pos1` và `Score_B_pos2`.
+> - **Condition 2 (BA Order):** Tráo đổi vị trí, đưa cho LLM Judge đánh giá theo thứ tự: Answer B đứng trước, Answer A đứng sau. Ghi lại điểm số `Score_B_pos1` và `Score_A_pos2`.
+>
+> **Đánh giá & Kết luận:** So sánh điểm số trung bình của các câu trả lời khi ở vị trí 1 so với vị trí 2. Nếu `avg(Score_pos1)` cao hơn rõ rệt so với `avg(Score_pos2)` bất kể nội dung câu trả lời là A hay B (với kiểm định thống kê Paired t-test có p-value < 0.05 và delta > 0.1), ta kết luận LLM Judge mắc Position Bias.
+>
+> Để tránh content bias, cùng một answer phải xuất hiện một lần ở vị trí 1 và một lần ở vị trí 2. Thứ tự AB/BA nên được randomize hoặc counterbalance giữa các câu hỏi; không kết luận position bias từ một prompt hoặc một cặp answer duy nhất.
 
 **Câu 2: Làm thế nào giảm verbosity bias bằng rubric design?**
 
 > *Câu trả lời:*
+>
+> 1. **Tách biệt tiêu chí (Dimensions):** Tách bạch rõ tiêu chí `Correctness` (Độ chính xác) và `Conciseness` (Độ súc tích), không gộp chung thành một tiêu chí "Quality" chung chung.
+> 2. **Định nghĩa điểm số theo Claim/Ý chính:** Định nghĩa mức Score 5 là "trả lời đủ và đúng các ý chính, không chứa thông tin thừa/rác", thay vì dựa trên số lượng từ.
+> 3. **Thêm Hướng dẫn Trực tiếp (Explicit Prompt Guard):** Thêm chỉ dẫn nghiêm ngặt vào judge prompt: *"Do NOT award higher scores for longer responses. Evaluate factual accuracy and relevance only."*
+> 4. **Bổ sung tiêu chí Precision:** Đánh giá tỉ lệ `từ/ý hữu ích trên tổng số từ` để phạt các câu trả lời dài dòng nhưng nhiều thông tin rác.
 
 **Câu 3: Tại sao cần calibrate LLM judge với human labels?**
 
 > *Câu trả lời:*
+>
+> LLM Judge dù có tính nhất quán nội tại cao nhưng vẫn có thể mắc phải các **systematic bias (định kiến hệ thống)** khiến kết quả chấm bị lệch so với thực tế. Việc Calibrate với Human Labels giúp:
+> 1. **Đo lường độ tin cậy thực tế:** Tính chỉ số đồng thuận (như Cohen's Kappa hoặc Spearman Correlation) giữa điểm của LLM Judge và chuyên gia con người. Nếu Kappa < 0.6, rubric cần phải được sửa lại.
+> 2. **Phát hiện Blind Spots:** Con người có thể phát hiện các lỗi sai tinh vi mang tính domain-specific (như sai mốc thời gian 1 ngày, nhầm lẫn giữa quy định cũ và mới) mà LLM Judge dễ bỏ qua.
+> 3. **Đảm bảo an toàn cho các tác vụ High-stakes:** Trong môi trường giáo dục (Northstar Student Services), câu trả lời sai về deadline hoặc điều kiện học bổng gây hậu quả thực tế nghiêm trọng, cần kiểm chứng bằng đánh giá của con người.
 
 ### Exercise 1.3 — Evaluation trong CI/CD
 
@@ -62,13 +91,24 @@ Ba bias thường gặp:
 
 | Metric | Threshold | Lý do |
 |---|---:|---|
-| Faithfulness | | |
-| Answer Relevance | | |
-| Completeness | | |
+| Faithfulness | 0.70 | Mức rủi ro hallucination nghiêm trọng. Trong dịch vụ sinh viên, AI không được phép bịa đặt quy định/chính sách. Block deployment nếu dưới 0.70. |
+| Answer Relevance | 0.60 | Dưới threshold này câu trả lời bị lạc đề, sinh viên không nhận được thông tin cần thiết. Block deployment nếu dưới 0.60. |
+| Completeness | 0.55 | Đặt threshold mềm hơn (Alert trước) do Completeness có thể bị ảnh hưởng bởi paraphrasing của heuristic word-overlap. Block nếu đi kèm Context Recall thấp. |
+
+Đây là các starting thresholds cho lab, cần hiệu chỉnh bằng baseline, human labels và confidence
+interval khi đưa vào CI/CD thật. Nên dùng hai lớp quality gate:
+
+1. **Dataset-level gate:** điểm trung bình và regression so với baseline không được vượt threshold.
+2. **Case-level safety gate:** một case có hallucination nghiêm trọng, policy sai hoặc faithfulness
+   cực thấp vẫn phải block và chuyển human review, dù điểm trung bình toàn dataset đạt.
 
 **Câu 2: Khi nào dùng offline evaluation, online evaluation và human review?**
 
 > *Câu trả lời:*
+>
+> - **Offline Evaluation (RAGAS / Automated Benchmark):** Dùng tự động trong CI/CD Pipeline **trước khi deploy** mỗi khi có thay đổi code, prompt, retriever hoặc model. Mục tiêu: Đảm bảo không bị suy giảm chất lượng (regression) trên Golden Dataset.
+> - **Online Evaluation (TruLens / Langfuse / Production Monitoring):** Dùng liên tục trên real user traffic **sau khi deploy**. Mục tiêu: Phát hiện *distribution shift* (câu hỏi thực tế của sinh viên khác với tập golden dataset) và cảnh báo khi metric bị trôi (drift).
+> - **Human Review:** Dùng theo dạng **sampling định kỳ**, khi có sự kiện đặc biệt (major release, thay đổi chính sách trường), hoặc khi Online/Offline metrics phát hiện ra failure cluster mới để kiểm chứng và calibrate lại LLM Judge.
 
 ---
 

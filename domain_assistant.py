@@ -21,7 +21,19 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from dotenv import load_dotenv
-from openai import OpenAI, OpenAIError
+
+try:
+    import google.genai as genai
+    _GENAI_AVAILABLE = True
+except ImportError:
+    _GENAI_AVAILABLE = False
+
+try:
+    from openai import OpenAI, OpenAIError
+    _OPENAI_AVAILABLE = True
+except ImportError:  # pragma: no cover
+    _OPENAI_AVAILABLE = False
+    OpenAIError = Exception  # fallback for except clause below
 
 load_dotenv(Path(__file__).resolve().with_name(".env"))
 
@@ -243,13 +255,17 @@ class TextGenerator(Protocol):
 
 
 class OpenAIGenerator:
+    """Calls the OpenAI Chat Completions API (gpt-4o, gpt-4o-mini, …)."""
+
     def __init__(self, max_output_tokens: int = 300) -> None:
+        if not _OPENAI_AVAILABLE:
+            raise RuntimeError(
+                "openai package not installed. Run: pip install openai"
+            )
         api_key = os.getenv("OPENAI_API_KEY", "").strip()
-        self.model = os.getenv("OPENAI_MODEL", "").strip()
+        self.model = os.getenv("OPENAI_MODEL", "gpt-4o-mini").strip()
         if not api_key:
             raise RuntimeError("OPENAI_API_KEY is missing from .env")
-        if not self.model:
-            raise RuntimeError("OPENAI_MODEL is missing from .env")
         self.client = OpenAI(api_key=api_key)
         self.max_output_tokens = max_output_tokens
 
@@ -264,6 +280,71 @@ class OpenAIGenerator:
         if not answer:
             raise RuntimeError("OpenAI returned an empty answer")
         return answer
+
+
+class GeminiGenerator:
+    """Calls the Google Gemini API via the native google-genai SDK.
+
+    Required .env keys:
+        GEMINI_API_KEY  — key từ https://aistudio.google.com/apikey
+        GEMINI_MODEL    — e.g. gemini-2.0-flash  (default: gemini-2.0-flash)
+    """
+
+    def __init__(self, max_output_tokens: int = 300) -> None:
+        if not _GENAI_AVAILABLE:
+            raise RuntimeError(
+                "google-genai package not installed. "
+                "Run: pip install google-genai"
+            )
+        api_key = os.getenv("GEMINI_API_KEY", "").strip()
+        self.model = os.getenv("GEMINI_MODEL", "gemini-2.0-flash").strip()
+        if not api_key:
+            raise RuntimeError("GEMINI_API_KEY is missing from .env")
+        self.client = genai.Client(api_key=api_key)
+        self.max_output_tokens = max_output_tokens
+
+    def generate(self, prompt: str) -> str:
+        from google.genai import types as genai_types  # lazy import
+
+        response = self.client.models.generate_content(
+            model=self.model,
+            contents=prompt,
+            config=genai_types.GenerateContentConfig(
+                temperature=0,
+                max_output_tokens=self.max_output_tokens,
+            ),
+        )
+        answer = response.text.strip() if response.text else ""
+        if not answer:
+            raise RuntimeError("Gemini returned an empty answer")
+        return answer
+
+
+class GeneratorFactory:
+    """Chọn provider dựa trên biến môi trường LLM_PROVIDER.
+
+    LLM_PROVIDER=openai  → OpenAIGenerator  (OPENAI_API_KEY + OPENAI_MODEL)
+    LLM_PROVIDER=gemini  → GeminiGenerator  (GEMINI_API_KEY + GEMINI_MODEL)
+
+    Nếu không đặt LLM_PROVIDER, mặc định là 'gemini'.
+    """
+
+    PROVIDERS: dict[str, type] = {
+        "openai": OpenAIGenerator,
+        "gemini": GeminiGenerator,
+    }
+
+    @classmethod
+    def create(cls, max_output_tokens: int = 300) -> TextGenerator:
+        provider = os.getenv("LLM_PROVIDER", "gemini").strip().lower()
+        generator_cls = cls.PROVIDERS.get(provider)
+        if generator_cls is None:
+            supported = ", ".join(cls.PROVIDERS)
+            raise RuntimeError(
+                f"Unknown LLM_PROVIDER={provider!r}. "
+                f"Supported values: {supported}"
+            )
+        return generator_cls(max_output_tokens=max_output_tokens)
 
 
 @dataclass(frozen=True)
@@ -299,7 +380,7 @@ class DomainAssistant:
         return cls(
             corpus_id,
             BM25Retriever(chunks),
-            generator if generator is not None else OpenAIGenerator(),
+            generator if generator is not None else GeneratorFactory.create(),
             top_k,
         )
 
