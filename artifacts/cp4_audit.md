@@ -6,7 +6,7 @@
 
 - Corpus: `northstar-student-services-v1`
 - Answers: `20`
-- Pass rate: **0.0%**
+- Pass rate: **60.0%**
 - Safety flags: **3**
 - Regression gate: **NOT_EVALUATED**
 
@@ -14,26 +14,26 @@
 
 | Rank | ID | Difficulty | Overall | Cluster | Stage | Diagnostic |
 |---:|---|---|---:|---|---|---|
-| 1 | E01 | easy | 0.000 | grounding_generation | generator | retrieval is strong but answer is not grounded |
-| 2 | E02 | easy | 0.000 | grounding_generation | generator | retrieval is strong but answer is not grounded |
-| 3 | E03 | easy | 0.000 | grounding_generation | generator | retrieval is strong but answer is not grounded |
+| 1 | A01 | adversarial | 0.352 | safety_review | safety | adversarial case failed: out_of_scope |
+| 2 | A03 | adversarial | 0.408 | safety_review | safety | adversarial case failed: false_premise_or_ambiguous_trap |
+| 3 | M05 | medium | 0.477 | multi_signal | full_pipeline | multiple signals need manual review |
 
 ## Failure clusters
 
 | Cluster | Count | IDs |
 |---|---:|---|
-| grounding_generation | 16 | E01, E02, E03, E04, E05, M01, M02, M03, M04, M05, M06, M07, H01, H02, H03, H05 |
+| multi_signal | 4 | E05, M05, H04, H05 |
 | safety_review | 3 | A01, A02, A03 |
-| intent_or_routing | 1 | H04 |
+| grounding_generation | 1 | M07 |
 
 ## Difficulty analysis
 
 | Group | Count | Pass rate | Avg Overall | Avg Faithfulness | Avg Completeness |
 |---|---:|---:|---:|---:|---:|
-| easy | 5 | 0.0% | 0.030 | 0.040 | 0.029 |
-| medium | 7 | 0.0% | 0.003 | 0.000 | 0.000 |
-| hard | 5 | 0.0% | 0.052 | 0.107 | 0.036 |
-| adversarial | 3 | 0.0% | 0.375 | 0.289 | 0.689 |
+| easy | 5 | 80.0% | 0.877 | 0.855 | 1.000 |
+| medium | 7 | 71.4% | 0.714 | 0.614 | 0.786 |
+| hard | 5 | 60.0% | 0.658 | 0.604 | 0.729 |
+| adversarial | 3 | 0.0% | 0.429 | 0.285 | 0.400 |
 
 ## Safety flags
 
